@@ -7,6 +7,7 @@ import importlib.resources
 from crum import get_current_request
 from django.conf import settings
 from django.template import Context, Template
+from django.utils.translation import gettext as _
 from openedx_filters import PipelineStep
 from web_fragments.fragment import Fragment
 
@@ -26,6 +27,54 @@ except ImportError:
 TEMPLATE_ABSOLUTE_PATH = "/instructor_dashboard/"
 BLOCK_CATEGORY = "feedback"
 TEMPLATE_CATEGORY = "feedback_instructor"
+
+# Tab identifier used by both the backend tab entry and the frontend route slot.
+FEEDBACK_TAB_ID = "feedback"
+# Placed after the platform-defined tabs (highest core sort_order is 110 for Special Exams).
+FEEDBACK_TAB_SORT_ORDER = 120
+
+
+class AddFeedbackTabToInstructorDashboard(PipelineStep):
+    """
+    Add the Course Feedback tab to the new (frontend-base) instructor dashboard.
+
+    The legacy dashboard is extended via the ``...render.started.v1`` filter (see
+    :class:`AddFeedbackTab`), which appends a server-rendered section. The new
+    frontend-base instructor dashboard instead builds its navigation from the
+    ``org.openedx.learning.instructor.dashboard.tabs.requested.v1`` filter, so the
+    legacy step never runs there. This step registers the tab for that dashboard.
+
+    The tab content is rendered by a frontend plugin registered in the
+    ``org.openedx.frontend.slot.instructorDashboard.routes.v1`` slot for the
+    ``feedback`` tab id; without that plugin the tab renders the "Page Not Found"
+    fallback.
+    """
+
+    def run_filter(self, tabs, user, course_key):  # pylint: disable=unused-argument, arguments-differ
+        """
+        Append the Course Feedback tab to the instructor dashboard tabs list.
+
+        Args:
+            tabs (list): List of tab dicts (each with tab_id, title, url, sort_order).
+            user (User): The requesting user (unused, kept for filter signature).
+            course_key (CourseKey): Course key for the instructor dashboard.
+
+        Returns:
+            dict: The (possibly) modified ``tabs`` list under the ``tabs`` key.
+        """
+        if not settings.FEATURES.get("ENABLE_FEEDBACK_INSTRUCTOR_VIEW", False):
+            return {"tabs": tabs}
+
+        tabs.append(
+            {
+                "tab_id": FEEDBACK_TAB_ID,
+                "title": _("Course Feedback"),
+                "url": f"/instructor-dashboard/{course_key}/{FEEDBACK_TAB_ID}",
+                "sort_order": FEEDBACK_TAB_SORT_ORDER,
+            }
+        )
+
+        return {"tabs": tabs}
 
 
 class AddFeedbackTab(PipelineStep):

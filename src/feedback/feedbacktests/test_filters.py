@@ -7,7 +7,12 @@ from unittest.mock import Mock, patch
 
 from django.test.utils import override_settings
 
-from feedback.extensions.filters import AddFeedbackTab, load_xblock_answers
+from feedback.extensions.filters import (
+    FEEDBACK_TAB_ID,
+    AddFeedbackTab,
+    AddFeedbackTabToInstructorDashboard,
+    load_xblock_answers,
+)
 
 
 class TestFilters(TestCase):
@@ -88,6 +93,48 @@ class TestFilters(TestCase):
         new_context = self.filter.run_filter(context, template_name)["context"]
 
         self.assertEqual(context, new_context)
+
+    @override_settings(FEATURES={"ENABLE_FEEDBACK_INSTRUCTOR_VIEW": True})
+    def test_tabs_filter_adds_feedback_tab(self):
+        """
+        The tabs.requested filter adds a single feedback tab when the feature is enabled.
+
+        Expected result:
+            - A tab with tab_id "feedback" is appended, carrying a course-scoped url.
+        """
+        tab_filter = AddFeedbackTabToInstructorDashboard(filter_type=Mock(), running_pipeline=Mock())
+
+        result = tab_filter.run_filter(tabs=[], user=Mock(), course_key="course-v1:test+1+1")
+
+        tabs = result["tabs"]
+        self.assertEqual(1, len(tabs))
+        self.assertEqual(FEEDBACK_TAB_ID, tabs[0]["tab_id"])
+        self.assertIn("course-v1:test+1+1", tabs[0]["url"])
+        self.assertIn("sort_order", tabs[0])
+
+    @override_settings(FEATURES={"ENABLE_FEEDBACK_INSTRUCTOR_VIEW": True})
+    def test_tabs_filter_preserves_existing_tabs(self):
+        """
+        The tabs.requested filter appends to, rather than replaces, existing tabs.
+        """
+        tab_filter = AddFeedbackTabToInstructorDashboard(filter_type=Mock(), running_pipeline=Mock())
+        existing = [{"tab_id": "course_info", "title": "Course Info", "url": "/x", "sort_order": 10}]
+
+        result = tab_filter.run_filter(tabs=existing, user=Mock(), course_key="course-v1:test+1+1")
+
+        tab_ids = [tab["tab_id"] for tab in result["tabs"]]
+        self.assertEqual(["course_info", FEEDBACK_TAB_ID], tab_ids)
+
+    @override_settings(FEATURES={"ENABLE_FEEDBACK_INSTRUCTOR_VIEW": False})
+    def test_tabs_filter_disabled(self):
+        """
+        The tabs.requested filter is a no-op when the feature flag is disabled.
+        """
+        tab_filter = AddFeedbackTabToInstructorDashboard(filter_type=Mock(), running_pipeline=Mock())
+
+        result = tab_filter.run_filter(tabs=[], user=Mock(), course_key="course-v1:test+1+1")
+
+        self.assertEqual([], result["tabs"])
 
     @patch("feedback.extensions.filters.load_single_xblock")
     def test_load_xblock_answers(self, load_single_xblock_mock):
