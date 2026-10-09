@@ -39,7 +39,7 @@ The instructors can view reports in their course instructor dashboard. The repor
 Tutor configuration
 -------------------
 
-To enable the FeedbackXBlock report in the instructor dashboard, you can use the following tutor inline plugins:
+To enable the FeedbackXBlock report in the instructor dashboard, you can enable the feature flag in a Tutor inline plugin:
 
 .. code-block:: yaml
 
@@ -48,14 +48,9 @@ To enable the FeedbackXBlock report in the instructor dashboard, you can use the
     patches:
       openedx-common-settings: |
         FEATURES["ENABLE_FEEDBACK_INSTRUCTOR_VIEW"] = True
-        OPEN_EDX_FILTERS_CONFIG = {
-          "org.openedx.learning.instructor.dashboard.render.started.v1": {
-            "fail_silently": False,
-            "pipeline": [
-              "feedback.extensions.filters.AddFeedbackTab",
-            ]
-          },
-        }
+
+The ``feedback`` Django app automatically registers the filter steps ``feedback.extensions.filters.AddFeedbackTabToInstructorDashboard`` (for Open edX Verawood and newer frontend-base instructor dashboard) and ``feedback.extensions.filters.AddFeedbackTab`` (for the legacy instructor dashboard) in ``OPEN_EDX_FILTERS_CONFIG``.
+
 
 To enable this plugin you need to create a file called *feedback-xblock-settings.yml* in your tutor plugins directory of your tutor instance
 with the content of the previous code block, and run the following commands.
