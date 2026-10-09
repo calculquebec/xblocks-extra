@@ -104,9 +104,8 @@ class TestFilters(TestCase):
         """
         tab_filter = AddFeedbackTabToInstructorDashboard(filter_type=Mock(), running_pipeline=Mock())
 
-        result = tab_filter.run_filter(tabs=[], user=Mock(), course_key="course-v1:test+1+1")
+        tabs = tab_filter.run_filter(tabs=[], user=Mock(), course_key="course-v1:test+1+1")
 
-        tabs = result["tabs"]
         self.assertEqual(1, len(tabs))
         self.assertEqual(FEEDBACK_TAB_ID, tabs[0]["tab_id"])
         self.assertIn("course-v1:test+1+1", tabs[0]["url"])
@@ -120,9 +119,9 @@ class TestFilters(TestCase):
         tab_filter = AddFeedbackTabToInstructorDashboard(filter_type=Mock(), running_pipeline=Mock())
         existing = [{"tab_id": "course_info", "title": "Course Info", "url": "/x", "sort_order": 10}]
 
-        result = tab_filter.run_filter(tabs=existing, user=Mock(), course_key="course-v1:test+1+1")
+        tabs = tab_filter.run_filter(tabs=existing, user=Mock(), course_key="course-v1:test+1+1")
 
-        tab_ids = [tab["tab_id"] for tab in result["tabs"]]
+        tab_ids = [tab["tab_id"] for tab in tabs]
         self.assertEqual(["course_info", FEEDBACK_TAB_ID], tab_ids)
 
     @override_settings(FEATURES={"ENABLE_FEEDBACK_INSTRUCTOR_VIEW": False})
@@ -132,9 +131,9 @@ class TestFilters(TestCase):
         """
         tab_filter = AddFeedbackTabToInstructorDashboard(filter_type=Mock(), running_pipeline=Mock())
 
-        result = tab_filter.run_filter(tabs=[], user=Mock(), course_key="course-v1:test+1+1")
+        tabs = tab_filter.run_filter(tabs=[], user=Mock(), course_key="course-v1:test+1+1")
 
-        self.assertEqual([], result["tabs"])
+        self.assertEqual([], tabs)
 
     @patch("feedback.extensions.filters.load_single_xblock")
     def test_load_xblock_answers(self, load_single_xblock_mock):

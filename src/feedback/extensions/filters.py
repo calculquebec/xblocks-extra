@@ -60,10 +60,10 @@ class AddFeedbackTabToInstructorDashboard(PipelineStep):
             course_key (CourseKey): Course key for the instructor dashboard.
 
         Returns:
-            dict: The (possibly) modified ``tabs`` list under the ``tabs`` key.
+            list: The (possibly) modified ``tabs`` list.
         """
         if not settings.FEATURES.get("ENABLE_FEEDBACK_INSTRUCTOR_VIEW", False):
-            return {"tabs": tabs}
+            return tabs
 
         tabs.append(
             {
@@ -74,7 +74,7 @@ class AddFeedbackTabToInstructorDashboard(PipelineStep):
             }
         )
 
-        return {"tabs": tabs}
+        return tabs
 
 
 class AddFeedbackTab(PipelineStep):
