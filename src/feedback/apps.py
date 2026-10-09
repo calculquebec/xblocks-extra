@@ -13,6 +13,13 @@ class FeedbackConfig(AppConfig):
     name = "feedback"
 
     plugin_app = {
+        "url_config": {
+            "lms.djangoapp": {
+                "namespace": "feedback_api",
+                "regex": r"^api/feedback/",
+                "relative_path": "urls",
+            },
+        },
         "settings_config": {
             "lms.djangoapp": {
                 "common": {"relative_path": "settings.common"},

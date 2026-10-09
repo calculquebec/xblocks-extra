@@ -3,6 +3,7 @@ Open edX Filters needed for instructor dashboard integration.
 """
 
 import importlib.resources
+import json
 
 from crum import get_current_request
 from django.conf import settings
@@ -13,6 +14,7 @@ from web_fragments.fragment import Fragment
 
 try:
     from lms.djangoapps.courseware.block_render import get_block_by_usage_id, load_single_xblock
+    from lms.djangoapps.courseware.models import StudentModule
     from openedx.core.djangoapps.enrollments.data import get_user_enrollments
     from xmodule.modulestore.django import modulestore
 
@@ -20,6 +22,7 @@ try:
 except ImportError:
     load_single_xblock = None
     get_block_by_usage_id = None
+    StudentModule = None
     modulestore = None
     get_user_enrollments = None
     get_lms_link_for_item = None
@@ -65,7 +68,8 @@ class AddFeedbackTabToInstructorDashboard(PipelineStep):
         if not settings.FEATURES.get("ENABLE_FEEDBACK_INSTRUCTOR_VIEW", False):
             return {"tabs": tabs}
 
-        tabs.append(
+        modified_tabs = tabs.copy()
+        modified_tabs.append(
             {
                 "tab_id": FEEDBACK_TAB_ID,
                 "title": _("Course Feedback"),
@@ -74,7 +78,7 @@ class AddFeedbackTabToInstructorDashboard(PipelineStep):
             }
         )
 
-        return {"tabs": tabs}
+        return {"tabs": modified_tabs}
 
 
 class AddFeedbackTab(PipelineStep):
@@ -149,12 +153,14 @@ def load_blocks(request, course):
             disable_staff_debug_info=True,
             course=course,
         )
+        scale_text = block.get_prompt().get("scale_text", [])
         answers = load_xblock_answers(
             request,
             students,
             str(course.location.course_key),
             str(feedback_block.location),
             course,
+            scale_text=scale_text,
         )
 
         vote_aggregate = []
@@ -202,33 +208,76 @@ def load_blocks(request, course):
     return blocks
 
 
-def load_xblock_answers(request, students, course_id, block_id, course):
+def load_xblock_answers(request, students, course_id, block_id, course, scale_text=None):
     """
-    Load answers for a given feedback xblock instance.
+    Load freeform answers for a given feedback xblock instance.
+
+    Uses a single bulk ``StudentModule`` query instead of instantiating an
+    XBlock per student, which reduces latency from O(N·students) to O(1)
+    database round-trips.
 
     Arguments:
-        request (HttpRequest): Django request object.
-        students (list): List of enrolled students.
-        course_id (str): Course ID.
-        block_id (str): Block ID.
-        course (CourseDescriptor): Course descriptor.
+        request (HttpRequest): Django request object (unused, kept for API compatibility).
+        students (QuerySet): QuerySet of (user_id, username) pairs for enrolled students.
+        course_id (str): Course ID string.
+        block_id (str): Block usage key string.
+        course (CourseDescriptor): Course descriptor (unused, kept for API compatibility).
+        scale_text (list | None): List of vote label strings from ``block.get_prompt()["scale_text"]``.
+            Used to resolve the numeric ``user_vote`` index to a human-readable label.
     """
+    if StudentModule is None:
+        return []
+
+    from opaque_keys.edx.keys import CourseKey, UsageKey  # noqa: PLC0415
+
+    try:
+        course_key = CourseKey.from_string(course_id)
+        usage_key = UsageKey.from_string(block_id).map_into_course(course_key)
+    except Exception:  # pylint: disable=broad-except
+        return []
+
+    # Fetch all student states for this block in one query.
+    student_ids = [uid for uid, _ in students]
+    username_map = {uid: uname for uid, uname in students}
+
+    rows = (
+        StudentModule.objects
+        .filter(
+            course_id=course_key,
+            module_state_key=usage_key,
+            student_id__in=student_ids,
+        )
+        .exclude(state__isnull=True)
+        .values("student_id", "state")
+    )
+
     answers = []
-    for user_id, username in students:
-        student_xblock_instance = load_single_xblock(request, user_id, course_id, block_id, course)
-        if student_xblock_instance:
-            prompt = student_xblock_instance.get_prompt()
-            if student_xblock_instance.user_freeform:
-                if student_xblock_instance.user_vote != -1:
-                    vote = prompt["scale_text"][student_xblock_instance.user_vote]
-                else:
-                    vote = "No vote"
-                answers.append(
-                    {
-                        "username": username,
-                        "user_vote": vote,
-                        "user_freeform": student_xblock_instance.user_freeform,
-                    }
-                )
+    for row in rows:
+        try:
+            state = json.loads(row["state"])
+        except (ValueError, TypeError):
+            continue
+
+        user_freeform = state.get("user_freeform", "")
+        if not user_freeform:
+            continue
+
+        user_vote = state.get("user_vote", -1)
+        username = username_map.get(row["student_id"], str(row["student_id"]))
+
+        # Resolve the numeric vote index to its human-readable label when
+        # scale_text was provided; fall back to a sentinel string otherwise.
+        if scale_text and isinstance(user_vote, int) and 0 <= user_vote < len(scale_text):
+            vote_label = scale_text[user_vote]
+        else:
+            vote_label = _("No vote") if user_vote == -1 else str(user_vote)
+
+        answers.append(
+            {
+                "username": username,
+                "user_vote": vote_label,
+                "user_freeform": user_freeform,
+            }
+        )
 
     return answers

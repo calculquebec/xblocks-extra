@@ -187,3 +187,34 @@ class TestFilters(TestCase):
             [],
             answers,
         )
+
+    def test_plugin_settings_registers_filters(self):
+        """
+        Verify plugin_settings safely registers OPEN_EDX_FILTERS_CONFIG steps for both legacy and new dashboards.
+        """
+        from feedback.settings.common import plugin_settings
+
+        class MockSettings:
+            MAKO_TEMPLATE_DIRS_BASE = []
+
+        mock_settings = MockSettings()
+        plugin_settings(mock_settings)
+
+        self.assertIn("OPEN_EDX_FILTERS_CONFIG", dir(mock_settings))
+        config = mock_settings.OPEN_EDX_FILTERS_CONFIG
+
+        legacy_key = "org.openedx.learning.instructor.dashboard.render.started.v1"
+        new_key = "org.openedx.learning.instructor.dashboard.tabs.requested.v1"
+
+        self.assertIn(legacy_key, config)
+        self.assertIn(new_key, config)
+
+        self.assertIn(
+            "feedback.extensions.filters.AddFeedbackTab",
+            config[legacy_key]["pipeline"],
+        )
+        self.assertIn(
+            "feedback.extensions.filters.AddFeedbackTabToInstructorDashboard",
+            config[new_key]["pipeline"],
+        )
+

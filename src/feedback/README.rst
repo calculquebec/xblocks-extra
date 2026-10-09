@@ -39,7 +39,7 @@ The instructors can view reports in their course instructor dashboard. The repor
 Tutor configuration
 -------------------
 
-To enable the FeedbackXBlock report in the instructor dashboard, you can use the following tutor inline plugins:
+To enable the FeedbackXBlock report in the instructor dashboard, you can enable the feature flag in a Tutor inline plugin:
 
 .. code-block:: yaml
 
@@ -48,14 +48,21 @@ To enable the FeedbackXBlock report in the instructor dashboard, you can use the
     patches:
       openedx-common-settings: |
         FEATURES["ENABLE_FEEDBACK_INSTRUCTOR_VIEW"] = True
-        OPEN_EDX_FILTERS_CONFIG = {
-          "org.openedx.learning.instructor.dashboard.render.started.v1": {
-            "fail_silently": False,
-            "pipeline": [
-              "feedback.extensions.filters.AddFeedbackTab",
-            ]
-          },
-        }
+        try:
+            not OPEN_EDX_FILTERS_CONFIG
+        except NameError:
+            OPEN_EDX_FILTERS_CONFIG = {}
+
+        if not OPEN_EDX_FILTERS_CONFIG.get("org.openedx.learning.instructor.dashboard.tabs.requested.v1"):
+            OPEN_EDX_FILTERS_CONFIG["org.openedx.learning.instructor.dashboard.tabs.requested.v1"] = {
+                "fail_silently": False,
+                "pipeline": [],
+            }
+
+        _feedback_step = "feedback.extensions.filters.AddFeedbackTabToInstructorDashboard"
+        if _feedback_step not in OPEN_EDX_FILTERS_CONFIG["org.openedx.learning.instructor.dashboard.tabs.requested.v1"]["pipeline"]:
+            OPEN_EDX_FILTERS_CONFIG["org.openedx.learning.instructor.dashboard.tabs.requested.v1"]["pipeline"].append(_feedback_step)
+
 
 To enable this plugin you need to create a file called *feedback-xblock-settings.yml* in your tutor plugins directory of your tutor instance
 with the content of the previous code block, and run the following commands.
